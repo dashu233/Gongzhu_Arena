@@ -120,9 +120,10 @@ class Room:
 
     player_address : address of players
     player_state : 0:empty,1:person,2:robot
-    player_cards : player's hand cards
+    player_cards : player's hand cards(剩余)
     player_collect : player's collect cards, hearts.etc
-    player_score : player's score
+    player_score : player's score(?) 
+    #player_score可以用一个函数每次现算，因为也不是很常用，存为变量的话，大部分时间都是undef的状态令人不安
     player_name : player's names
 
     star : which player need to play a card
@@ -133,23 +134,6 @@ class Room:
     game_state : waiting(0), start(1)
 
     '''
-
-    id = 0
-    player_num = 0
-    player_address = []
-    player_state = []
-    player_cards = []
-    player_collect = []
-    player_score = []
-    player_names = []
-
-    star = 0
-    winner = 0
-    huase = ''
-    cards_on_table = []
-    turn = 1
-    game_state = 0
-
     def __init__(self,roomid,pn):
         self.id = roomid
         self.player_num = pn
@@ -168,7 +152,7 @@ class Room:
         self.turn = 1
         self.game_state = 0
 
-    def show(self):
+    def __str__(self):
         print("room:%d" % self.id)
         print("num of player: %d" % self.player_num)
         print("address of players:")
