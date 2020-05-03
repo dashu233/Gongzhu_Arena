@@ -31,18 +31,15 @@ from http.server import BaseHTTPRequestHandler
 
 try:
     from http.server import ThreadingHTTPServer
-
     HTTPServerClass = ThreadingHTTPServer
 except ImportError:
     from http.server import HTTPServer
-
     HTTPServerClass = HTTPServer
     log("import ThreadingHTTPServer failed, use HTTPServer instead")
 
 
 class MyTimeoutException(Exception):
     pass
-
 
 class MyHTTPServer(HTTPServerClass):
     '''
@@ -53,8 +50,6 @@ class MyHTTPServer(HTTPServerClass):
     rooms = {}
     def serve_forever(self):
         log("server is on %s" % (self.socket.getsockname(),))
-        #log("server context stats is %s" % (self.socket.context.cert_store_stats(),))
-        #log("server hostname is %s" % (self.socket.server_hostname,))
         HTTPServerClass.serve_forever(self)
 
     def _handle_request_noblock(self):
@@ -95,6 +90,7 @@ class MyHTTPServer(HTTPServerClass):
         # log("%d: accpeted, cert: %s"%(id,acc[0].getpeercert()))
         return acc
 
+#for sorting cards
 ORDER_DICT1={'S':-300,'H':-200,'D':-100,'C':0,'J':-200}
 ORDER_DICT2={'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'1':10,'J':11,'Q':12,'K':13,'A':14,'P':15,'G':16}
 def cards_order(card):
@@ -103,12 +99,8 @@ def cards_order(card):
 SCORE_DICT={'SQ':-100,'DJ':100,'C10':0,
             'H2':0,'H3':0,'H4':0,'H5':-10,'H6':-10,'H7':-10,'H8':-10,'H9':-10,'H10':-10,
             'HJ':-20,'HQ':-30,'HK':-40,'HA':-50,'JP':-60,'JG':-70}
+
 class Player:
-    name = ''
-    rob = True
-    client = 0
-    id = -1
-    place = 0
     def __init__(self, name = None, rob = True, client = 0, id = -1,place = 0):
         self.name = name
         self.rob = rob
@@ -116,20 +108,15 @@ class Player:
         self.id = -1
         self.place = place
 
-
-
 class Room:
     '''
     player_num: 3 or 4
-    for 4:
-      0
-    3   1
-      2
-    for 3:
-      0
-    2   1
+    for 4:   0
+           3   1
+             2
+    for 3:   0
+           2   1
     id : roomid
-
 
     player_address : address of players
     player_state : 0:empty,1:person,2:robot
@@ -137,7 +124,6 @@ class Room:
     player_collect : player's collect cards, hearts.etc
     player_score : player's score
     player_name : player's names
-
 
     star : which player need to play a card
     winner : which player win this turn
