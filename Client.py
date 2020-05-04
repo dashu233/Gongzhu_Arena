@@ -5,7 +5,6 @@ import os
 
 from http.client import HTTPConnection
 
-
 class Agent:
     name = ""
     pwd = ""

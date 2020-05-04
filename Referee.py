@@ -10,6 +10,14 @@ LOGFILE = ".".join(LOGFILE)
 
 
 def log(msg, l=1, end="\n", logfile=None, fileonly=False):
+    """
+    general purpose log function
+        msg: need not to be str, it will automatically convert it to str and print
+        l: log level, 
+            0(DEBUG) only print, 
+            1(INFO) 2(WARN) print and write in log
+            3(ERR) 4(FATAL) print msg and error stack and write in log  
+    """
     st = traceback.extract_stack()[-2]
     lstr = LOGLEVEL[l]
     now_str = "%s %03d" % (time.strftime("%y/%m/%d %H:%M:%S", time.localtime()), math.modf(time.time())[0] * 1000)
@@ -28,7 +36,6 @@ def log(msg, l=1, end="\n", logfile=None, fileonly=False):
 
 
 from http.server import BaseHTTPRequestHandler
-
 try:
     from http.server import ThreadingHTTPServer
     HTTPServerClass = ThreadingHTTPServer
@@ -46,6 +53,7 @@ class MyHTTPServer(HTTPServerClass):
         rooms: dict, id:room
         players:dict, name:player
     '''
+    #???????????
     players = {}
     rooms = {}
     def serve_forever(self):
@@ -203,7 +211,8 @@ class Room:
                      'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'HJ', 'HQ', 'HK', 'HA',
                      'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10', 'DJ', 'DQ', 'DK', 'DA',
                      'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'CJ', 'CQ', 'CK', 'CA', 'JG', 'JP']
-            random.shuffle(cards)
+            for i in range(3):
+                random.shuffle(cards)
             for i in range(3):
                 self.player_cards[i] = cards[18*i:18*(i+1)]
                 self.player_cards[i].sort(key = cards_order)
@@ -212,7 +221,8 @@ class Room:
                      'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'HJ', 'HQ', 'HK', 'HA',
                      'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10', 'DJ', 'DQ', 'DK', 'DA',
                      'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'CJ', 'CQ', 'CK', 'CA']
-            random.shuffle(cards)
+            for i in range(4):
+                random.shuffle(cards)
             for i in range(4):
                 self.player_cards[i] = cards[13 * i:13 * (i + 1)]
                 self.player_cards[i].sort(key=cards_order)
@@ -314,7 +324,7 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
         # self.rfile is the file to read from client
         # self.wfile is the file to write to response
 
-        print("recive a msg")
+        log("recive a msg")
         self._set_headers()
 
         recive_text = self.rfile.read(int(self.headers['content-length']))
@@ -330,8 +340,6 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
             name = js_recive["user"]
             pwd = js_recive["user_pwd"]
             rob = js_recive["rob"]
-
-
             if name in players:
                 error = "Same Name"
                 reply = {"command": "error", "detail": error}
@@ -339,11 +347,10 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
                 reply_byte = reply_text.encode("utf8")
                 self.wfile.write(reply_byte)
                 return
-
             players[name] = Player(name,rob,self.client_address)
             reply = {"command": "login_reply", "success": True}
             self.wfile.write(json.dumps(reply).encode("utf8"))
-            print(players)
+            log("players: %s"%(players,))
             return
 
         def room():
