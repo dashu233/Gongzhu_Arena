@@ -390,7 +390,11 @@ class Agent_Thread(threading.Thread):
             for i in self.agent.history:
                 print(i)
 
+
+
+
         print("over:"+self.agent.name)
+
 
 
 def test_post():
@@ -403,6 +407,9 @@ def test_post():
     shiju1.join()
     shiju2.join()
     shiju3.join()
+
+
+
 
 
 if __name__ == "__main__":
