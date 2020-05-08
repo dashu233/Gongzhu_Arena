@@ -6,40 +6,72 @@ client将通过HTTPConnection.getresponse()接受服务器发回来的内容
 目前定下的命令有
 
 ### 用户发给服务器
-* {"command": "robot_login", "user":"CouCou", "password":"abcdefg", "number_of_robots": "4", "robot_name_list": alist, "room": roomid}
-    代表有4个机器人想打牌，登陆时需要输入主人的用户名和密码，如果是两个机器人，要安排它们坐在对家
-    alist是机器人的名字，是一个str列表
-    roomid如果是'A'，则表明机器人愿意加入任何一个现存的房间
 
-#* {"command": "user_login", "user":"name","user_pwd":"pwd","room":roomid}
-#    roomid 是一个数字，或者为'T'或'Q'
+* {"command": "user_login", "user":"name","user_pwd":"pwd","robot":true}
 
-* {"command": "mychoice", "robot_name": robotname, "card":"SQ","room":roomid}
-    roomid 是数字哦
-    如果是玩家自己在打牌robotname是"moi"("ich")
 
-* {"command": "leave_room", "robot_name_list": alist, 'room':roomid}
+* {"command": "find_room","room":roomid,"instruction":'T'}
+    roomid 是一个数字，instruction或者为'T'或'Q'（创建房间）,
+'A'(Any) 'Ani',n代表几人游戏，i代表要求至少i个空位,'A45'代表剩余空位为[0,2] or [1,3]
+'F' 代表询问房间是否存在
 
-* {"command": "ready_for_next", "robot_name_list": alist, 'room':roomid}
-    所有机器人在这一轮训练完毕，已经准备好重新发牌再打一局
+*{"command":"sit_down","user":name,"roomid":id,"place":0}
+    server 返回可用位置，玩家选择位置place坐下。玩家需自己保存place。
+
+*{"command":"ask_start","user":name}
+    询问server游戏是否开始
+
+*{"command":"update_card","user":name}
+    打牌时询问更新
+
+* {"command": "play_a_card", "user": name, "card":"SQ"}
+    place 代表几号位置
+
+*{"command":"ask_trick_end","user":name}
+
+*{"command":"trick_end_get","user":name}
+
+* {"command": "leave_room", "user": name, 'room':roomid}
+    代表name离开啦
+
+* {"command": "ready_for_next", "user":name, 'room':roomid}
+   name希望再打一轮
+
+*{"command":"give_up","user":name,'room':roomid}
+    name希望认输
 
 ### 服务器发给单独用户
-* {"command": 'loginsuc', "room":roomid,"your_loc":lst,"players":["player1_name","player2_name",...]}
+* {"command":"login_reply","success":true}
+
+* {"command":"room_reply","roomid":id,"success":true,"seats":[avalible_seat1,...]}
+ 用户申请加入某一房间，服务器返回是否成功加入，如果成功，seats代表当前房间可用位置
+
+
+* {"command": 'sitdown_reply', "room":roomid,"place":lst,"players":["player1_name","player2_name",...]}
   "your_loc"是坐的位置, 按加入顺序按0123分配, 列表的长度等于发过去的robot_name_list的长度，顺序也是一样，如果是玩家则长度为1
   "players"也按0123顺序排好
   登陆失败交给"error"命令处理
 
 #* {"command":"new_player", "players":["player1_name","player2_name",...]}
 #  "players"格式与login_suc中一样
+* {"command":"start_reply_waiting", "players":["player1_name","player2_name",...]}
+未开始比赛，其他位置上的人
 
-* {"command":"shuffle", "cards":[["SA","H2","D3","C4",...],[...]]}
+* {"command":"start_reply_start", "players":["player1_name","player2_name",...],"start_place":place,"cards":["SA","H2","D3","C4",...]}
+  如果开始了，返回cards以及由谁开始打
   S(Spade), H(Heart), D(Diamond), C(Club)表示黑红方梅
   A23456789JQK表示不同的牌
-  "cards"中的每个元素是：["SA","H2","D3","C4",...]，排列的顺序与robot_name_list一致
 
-* {"command":"tableupdate", 'this_trick':[...], 'trick_start':a number, 'which_round': a number}
-  别人打牌出去以后需要告诉client牌桌更新了
-  'which_round'代表这是打的第几轮了，从0到12（或从0到18）
+*{"command":"update_card_reply","cards_on_table":[card1,card2,...],"start_place":place, "now_player":pl,"suit":st}
+*{"command":"update_card_reply_game_end","scores":[sc1,sc2,...],"collect":[card1,card2...]}
+*{"command":"play_a_card_reply"}
+
+*{"command":"ask_trick_end_reply","cards_on_table":[card1,card2,...],"start_player":st_pl,"winner":wr,"trick":trick}
+*{"command":"ask_trick_end_reply_waiting"}
+
+*{"command":"trick_end_get_reply"}
+*{"command":"trick_end_get_reply_waiting"}
+
 
 #* {"command":"relative_history", "robot_name":robotname, "data":str, 'which_round': a number}
 #  将所有历史发送给机器人robotname，格式如下：
@@ -53,18 +85,9 @@ client将通过HTTPConnection.getresponse()接受服务器发回来的内容
   把所有隐藏的信息发给用户，用于训练机器人
   把所有玩家的手牌发过来，用绝对位置0123排序
 
-* {"command":'yourturn', "robot_name":robotname, 'color':'S'}
-  告诉client该你打牌了,并且返回应该打牌的用户的绝对位置 (用于区分不同的机器人)
-  color是这一轮的花色，用'S','H','C','D', 或者是'A'
-
 #* {"command":'got_yourchoice','your_remain':[[]]}
 #  告诉用户获得了 mychoice
 
 #* {"command":'got_leave_room','room':roomid}
-
-* {"command":'trickend', "winner":0,"reward":["SQ","DJ",..]}
-
-* {"command": 'game_end','final_reward':[0,0,0,50]}
-  "scores"也按0123顺序排好
 
 * {"command":'error', "detail":"blabla"}
