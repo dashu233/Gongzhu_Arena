@@ -13,12 +13,23 @@ client将通过HTTPConnection.getresponse()接受服务器发回来的内容
 * {"command": "find_room","room":roomid,"instruction":'T'}
     roomid 是一个数字，instruction或者为'T'或'Q'（创建房间）,
 'A'(Any) 'Ani',n代表几人游戏，i代表要求至少i个空位,'A45'代表剩余空位为[0,2] or [1,3]
+'F' 代表询问房间是否存在
 
 *{"command":"sit_down","user":name,"roomid":id,"place":0}
     server 返回可用位置，玩家选择位置place坐下。玩家需自己保存place。
 
-* {"command": "mychoice", "user": name, "card":"SQ","room":roomid}
+*{"command":"ask_start","user":name}
+    询问server游戏是否开始
+
+*{"command":"update_card","user":name}
+    打牌时询问更新
+
+* {"command": "play_a_card", "user": name, "card":"SQ"}
     place 代表几号位置
+
+*{"command":"ask_trick_end","user":name}
+
+*{"command":"trick_end_get","user":name}
 
 * {"command": "leave_room", "user": name, 'room':roomid}
     代表name离开啦
@@ -43,14 +54,24 @@ client将通过HTTPConnection.getresponse()接受服务器发回来的内容
 
 #* {"command":"new_player", "players":["player1_name","player2_name",...]}
 #  "players"格式与login_suc中一样
+* {"command":"start_reply_waiting", "players":["player1_name","player2_name",...]}
+未开始比赛，其他位置上的人
 
-* {"command":"shuffle_result", "place":place,"cards":["SA","H2","D3","C4",...]}
+* {"command":"start_reply_start", "players":["player1_name","player2_name",...],"start_place":place,"cards":["SA","H2","D3","C4",...]}
+  如果开始了，返回cards以及由谁开始打
   S(Spade), H(Heart), D(Diamond), C(Club)表示黑红方梅
   A23456789JQK表示不同的牌
 
-* {"command":"tableupdate", "place":place,'this_trick':[...], 'trick_start':a number, 'which_round': a number}
-  别人打牌出去以后需要告诉client牌桌更新了
-  'which_round'代表这是打的第几轮了，从0到12（或从0到18）
+*{"command":"update_card_reply","cards_on_table":[card1,card2,...],"start_place":place, "now_player":pl,"suit":st}
+*{"command":"update_card_reply_game_end","scores":[sc1,sc2,...],"collect":[card1,card2...]}
+*{"command":"play_a_card_reply"}
+
+*{"command":"ask_trick_end_reply","cards_on_table":[card1,card2,...],"start_player":st_pl,"winner":wr,"trick":trick}
+*{"command":"ask_trick_end_reply_waiting"}
+
+*{"command":"trick_end_get_reply"}
+*{"command":"trick_end_get_reply_waiting"}
+
 
 #* {"command":"relative_history", "robot_name":robotname, "data":str, 'which_round': a number}
 #  将所有历史发送给机器人robotname，格式如下：
@@ -64,18 +85,9 @@ client将通过HTTPConnection.getresponse()接受服务器发回来的内容
   把所有隐藏的信息发给用户，用于训练机器人
   把所有玩家的手牌发过来，用绝对位置0123排序
 
-* {"command":'yourturn', "place":place, 'color':'S'}
-  告诉client该你打牌了,并且返回应该打牌的用户的绝对位置 (用于区分不同的机器人)
-  color是这一轮的花色，用'S','H','C','D', 或者是'A'
-
 #* {"command":'got_yourchoice','your_remain':[[]]}
 #  告诉用户获得了 mychoice
 
 #* {"command":'got_leave_room','room':roomid}
-
-* {"command":'trickend', "winner":0,"reward":["SQ","DJ",..]}
-
-* {"command": 'game_end','final_reward':[0,0,0,50]}
-  "scores"也按0123顺序排好
 
 * {"command":'error', "detail":"blabla"}

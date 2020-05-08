@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
-import time, sys, traceback, math, numpy, signal,json, random
+import time, sys, traceback, math, numpy, signal,json, random,copy,threading
 
 LOGLEVEL = {0: "DEBUG", 1: "INFO", 2: "WARN", 3: "ERR", 4: "FATAL"}
 LOGFILE = sys.argv[0].split(".")
@@ -31,18 +31,15 @@ from http.server import BaseHTTPRequestHandler
 
 try:
     from http.server import ThreadingHTTPServer
-
     HTTPServerClass = ThreadingHTTPServer
 except ImportError:
     from http.server import HTTPServer
-
     HTTPServerClass = HTTPServer
     log("import ThreadingHTTPServer failed, use HTTPServer instead")
 
 
 class MyTimeoutException(Exception):
     pass
-
 
 class MyHTTPServer(HTTPServerClass):
     '''
@@ -53,8 +50,6 @@ class MyHTTPServer(HTTPServerClass):
     rooms = {}
     def serve_forever(self):
         log("server is on %s" % (self.socket.getsockname(),))
-        #log("server context stats is %s" % (self.socket.context.cert_store_stats(),))
-        #log("server hostname is %s" % (self.socket.server_hostname,))
         HTTPServerClass.serve_forever(self)
 
     def _handle_request_noblock(self):
@@ -95,6 +90,7 @@ class MyHTTPServer(HTTPServerClass):
         # log("%d: accpeted, cert: %s"%(id,acc[0].getpeercert()))
         return acc
 
+#for sorting cards
 ORDER_DICT1={'S':-300,'H':-200,'D':-100,'C':0,'J':-200}
 ORDER_DICT2={'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'1':10,'J':11,'Q':12,'K':13,'A':14,'P':15,'G':16}
 def cards_order(card):
@@ -103,12 +99,8 @@ def cards_order(card):
 SCORE_DICT={'SQ':-100,'DJ':100,'C10':0,
             'H2':0,'H3':0,'H4':0,'H5':-10,'H6':-10,'H7':-10,'H8':-10,'H9':-10,'H10':-10,
             'HJ':-20,'HQ':-30,'HK':-40,'HA':-50,'JP':-60,'JG':-70}
+
 class Player:
-    name = ''
-    rob = True
-    client = 0
-    id = -1
-    place = 0
     def __init__(self, name = None, rob = True, client = 0, id = -1,place = 0):
         self.name = name
         self.rob = rob
@@ -116,28 +108,25 @@ class Player:
         self.id = -1
         self.place = place
 
-
-
 class Room:
     '''
     player_num: 3 or 4
-    for 4:
-      0
-    3   1
-      2
-    for 3:
-      0
-    2   1
+    for 4:   0
+           3   1
+             2
+    for 3:   0
+           2   1
     id : roomid
-
 
     player_address : address of players
     player_state : 0:empty,1:person,2:robot
-    player_cards : player's hand cards
+    player_cards : player's hand cards(剩余)
     player_collect : player's collect cards, hearts.etc
-    player_score : player's score
+    player_score : player's score(?)
+    #player_score可以用一个函数每次现算，因为也不是很常用，存为变量的话，大部分时间都是undef的状态令人不安
     player_name : player's names
-
+    player_ready_trick_end : ready for next trick, clear when ready_new_trick
+    player_ready_new_trick : ready for new trick, clear when ready_trick_end
 
     star : which player need to play a card
     winner : which player win this turn
@@ -146,24 +135,10 @@ class Room:
     turn : which turn
     game_state : waiting(0), start(1)
 
+    trick_step: how many player has played a card in this trick
+    trick: i'th trick
+
     '''
-
-    id = 0
-    player_num = 0
-    player_address = []
-    player_state = []
-    player_cards = []
-    player_collect = []
-    player_score = []
-    player_names = []
-
-    star = 0
-    winner = 0
-    huase = ''
-    cards_on_table = []
-    turn = 1
-    game_state = 0
-
     def __init__(self,roomid,pn):
         self.id = roomid
         self.player_num = pn
@@ -173,16 +148,21 @@ class Room:
         self.player_collect = [[] for i in range(pn)]
         self.player_score = [0 for i in range(pn)]
         self.player_names = ['' for i in range(pn)]
-
+        self.player_ready_trick_end = [False for i in range(pn)]
+        self.player_trick_end_get = [False for i in range(pn)]
 
         self.star = 0
         self.winner = 0
         self.huase = ''
         self.cards_on_table = []
+        self.last_trick_cards = []
         self.turn = 1
         self.game_state = 0
 
-    def show(self):
+        self.trick_step = 0
+        self.trick = 1
+
+    def __str__(self):
         print("room:%d" % self.id)
         print("num of player: %d" % self.player_num)
         print("address of players:")
@@ -203,13 +183,18 @@ class Room:
             print("huase need to play: %s" % self.huase)
         else:
             print("huase need to play: Any")
+
+        print("trick:%d"%self.trick)
+        print("game state:%d"%self.game_state)
         print()
+
     def empty_seats(self):
         a = []
         for i in range(self.player_num):
-            if self.player_state != 0:
+            if self.player_state[i] == 0:
                 a.append(i)
         return a
+
     def add_player(self, address, state, place, name):
         if state == 0 or place > self.player_num - 1 or place < 0:
             print("not a legal player\n")
@@ -220,14 +205,19 @@ class Room:
 
         self.player_address[place] = address
         self.player_state[place] = state
+        self.player_ready_new_trick = True
         self.player_names[place] = name
         return True
-    def shuffle(self):
+
+    def shuffle(self, start_place = 0):
         for i in self.player_state:
             if i == 0:
                 print("there're empty place\n")
                 return False
         self.game_state = 1
+        self.star = start_place
+        self.trick = 1
+        self.trick_step = 0
         if self.player_num == 3:
             cards = ['S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'SJ', 'SQ', 'SK', 'SA',
                      'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'HJ', 'HQ', 'HK', 'HA',
@@ -247,6 +237,7 @@ class Room:
                 self.player_cards[i] = cards[13 * i:13 * (i + 1)]
                 self.player_cards[i].sort(key=cards_order)
         return True
+
     def legal(self,place,card):
         if self.star != place:
             return False
@@ -259,6 +250,7 @@ class Room:
                         return False
             return True
         return True
+
     def play_card(self,place,card):
         if self.game_state == 0:
             return False
@@ -270,15 +262,20 @@ class Room:
             self.huase = card[0]
         self.star += 1
         self.star %= self.player_num
+
+        self.trick_step += 1
         return True
+
     def judge_winner(self):
         soc = -65535
+        loc = -1
         for i, card in self.cards_on_table:
-            if card[0] == self.huase and ORDER_DICT2[card[1]] > soc:
+            if (card[0] == self.huase or {card[0],self.huase} == {'H','J'}) and ORDER_DICT2[card[1]] > soc:
                 loc = i
                 soc = ORDER_DICT2[card[1]]
                 # log("%s is larger"%(card))
         return loc
+
     def calc_score_i(self,place):
         score = 0
         has_score_flag = False
@@ -305,19 +302,47 @@ class Room:
             else:
                 score *= 2
         return score
-    def end_turn(self):
-        if self.star != self.winner:
+
+    def end_trick(self):
+        if self.trick_step != self.player_num:
             return False
+
         self.winner = self.judge_winner()
         self.star = self.winner
-        for _,cd in self.cards_on_table:
+        for _, cd in self.cards_on_table:
             if cd in SCORE_DICT:
                 self.player_collect[self.winner].append(cd)
-        self.player_score[self.winner] = self.calc_score_i(self.winner)
+
+        self.last_trick_cards = copy.copy(self.cards_on_table)
+        self.cards_on_table.clear()
+
+        self.trick_step = 0
+        self.trick += 1
+        return True
+
+    def ready_trick_end(self):
+        if False in self.player_ready_trick_end:
+            return False
+        return True
+
+    def trick_end_get(self):
+        if False in self.player_trick_end_get:
+            return False
+        return True
+
+    def start_place(self):
+        return self.star - len(self.cards_on_table)
+
     def end_game(self):
-        self.game_state = 0
+        if (self.trick == 14 and self.player_num == 4) or (self.trick == 19 and self.player_num == 3):
+            self.game_state = 0
+            for i in range(self.player_num):
+                self.player_score[i] = self.calc_score_i(i)
+            return True
+        return False
+
     def leave(self,place):
-        self.game_state = 0;
+        self.game_state = 0
         self.player_state[place] = 0
         self.player_names[place] = ''
         self.player_address[place] = 0
@@ -343,13 +368,12 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
         # self.path is the request path
         # self.rfile is the file to read from client
         # self.wfile is the file to write to response
-
-        print("recive a msg")
         self._set_headers()
 
         recive_text = self.rfile.read(int(self.headers['content-length']))
 
         js_recive = json.loads(recive_text.decode())
+        print(js_recive)
 
         cmd = js_recive["command"]
 
@@ -373,10 +397,10 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
             players[name] = Player(name,rob,self.client_address)
             reply = {"command": "login_reply", "success": True}
             self.wfile.write(json.dumps(reply).encode("utf8"))
-            print(players)
+            #print(players)
             return
 
-        def room():
+        def findroom():
             ins = js_recive["instruction"]
             id_ = js_recive["roomid"]
             if ins[0] == 'T':
@@ -468,13 +492,23 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
                     reply = {"command": "error", "detail": error}
                     self.wfile.write(json.dumps(reply).encode("utf8"))
                     return
+            elif ins == 'F':
+                if id_ in rooms:
+                    reply = {"command": "room_reply", "roomid": id_, "success": True,
+                             "seats": rooms[id_].empty_seats()}
+                    self.wfile.write(json.dumps(reply).encode("utf8"))
+                    return
+                else:
+                    error = "room not exist"
+                    reply = {"command": "error", "detail": error}
+                    self.wfile.write(json.dumps(reply).encode("utf8"))
             else:
                 error = "nonlegal ins"
                 reply = {"command": "error", "detail": error}
                 self.wfile.write(json.dumps(reply).encode("utf8"))
                 return
 
-        def sit():
+        def sitdown():
             id = js_recive["roomid"]
             pl = js_recive["place"]
             name = js_recive["user"]
@@ -504,13 +538,10 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(reply).encode("utf8"))
                 return
 
-
-
             if player_.rob:
                 st = 2
             else:
                 st = 1
-
 
             rm.add_player(player_.client,st,pl,name)
             player_.id = id
@@ -519,15 +550,157 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
             reply = {"command": "sitdown_reply", "room":id,"place":pl,"players":rm.player_names}
             self.wfile.write(json.dumps(reply).encode("utf8"))
 
+        def askstart():
+            player_name = js_recive["user"]
+            if player_name not in players:
+                error = "login first"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+            player_instance = players[player_name]
+            player_place = player_instance.place
+            rm = rooms[player_instance.id]
+
+            if len(rm.empty_seats()) > 0:
+                reply = {"command":"start_reply_waiting", "players":rm.player_names}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+            else:
+                if not rm.game_state:
+                    # always starts from 0
+                    # TODO: start ramdomly or sequencily
+                    start_pl = 0
+                    rm.shuffle(start_pl)
+
+                reply={"command":"start_reply_start", \
+                       "players":rm.player_names,\
+                       "start_place":rm.star,\
+                       "cards":rm.player_cards[player_place]}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+
+        def updatecard():
+            player_name = js_recive["user"]
+            if player_name not in players:
+                error = "login first"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+            player_instance = players[player_name]
+            rm = rooms[player_instance.id]
+
+            rm.__str__()
+
+            if rm.end_game() or not rm.game_state:
+                rm.game_state = 0
+                reply = {"command": "update_card_reply_game_end", "score": rm.player_score, \
+                         "collect": rm.player_collect}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+            else:
+                reply = {"command": "update_card_reply", "cards_on_table": rm.cards_on_table, \
+                         "start_place": rm.start_place(), "now_player": rm.star, "suit": rm.huase}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+
+
+
+        def playacard():
+            player_name = js_recive["user"]
+            if player_name not in players:
+                error = "login first"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+            player_instance = players[player_name]
+            player_place = player_instance.place
+            rm = rooms[player_instance.id]
+            card = js_recive["card"]
+
+            if not rm.game_state:
+                error = "game not start"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+
+            if rm.play_card(player_place,card):
+                reply = {"command": "play_a_card_reply"}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+            else:
+                error = "nonlegal choice"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+
+        def asktrickend():
+            player_name = js_recive["user"]
+            if player_name not in players:
+                error = "login first"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+            player_instance = players[player_name]
+            player_place = player_instance.place
+            rm = rooms[player_instance.id]
+
+            if not rm.game_state:
+                error = "game not start"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+
+            if rm.ready_trick_end():
+                rm.end_trick()
+                rm.player_trick_end_get = [False for i in range(rm.player_num)]
+                reply = {"command":"ask_trick_end_reply","cards_on_table":rm.last_trick_cards,\
+                         "start_player":rm.start_place(),"winner":rm.judge_winner(),"trick":rm.trick}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+
+            else:
+                rm.player_ready_trick_end[player_place] = True
+                print(rm.player_ready_trick_end)
+
+                reply = {"command":"ask_trick_end_reply_waiting"}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+
+        def trickendget():
+            player_name = js_recive["user"]
+            if player_name not in players:
+                error = "login first"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+            player_instance = players[player_name]
+            player_place = player_instance.place
+            rm = rooms[player_instance.id]
+
+            if not rm.game_state:
+                error = "game not start"
+                reply = {"command": "error", "detail": error}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+                return
+
+            if rm.trick_end_get():
+                rm.player_ready_trick_end = [False for i in range(rm.player_num)]
+                reply = {"command":"trick_end_get_reply"}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
+
+            else:
+                rm.player_trick_end_get[player_place] = True
+                reply = {"command":"trick_end_get_reply_waiting"}
+                self.wfile.write(json.dumps(reply).encode("utf8"))
 
 
         switch_deal = {
             "user_login":login,
-            "find_room":room,
-            "sit_down":sit
+            "find_room":findroom,
+            "sit_down":sitdown,
+            "ask_start":askstart,
+            "update_card":updatecard,
+            "play_a_card":playacard,
+            "ask_trick_end":asktrickend,
+            "trick_end_get":trickendget,
         }
         switch_deal[cmd]()
-        print(js_recive)
+
 
         return 0
 
